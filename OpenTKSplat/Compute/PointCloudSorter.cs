@@ -8,6 +8,7 @@ using ILGPU.Algorithms.RadixSortOperations;
 using System.Runtime.InteropServices;
 using ILGPU.Runtime.OpenCL;
 using OpenTK.Mathematics;
+using OpenTKSplat.Compute;
 
 namespace OpenTKSplat.Kinect
 {
@@ -20,7 +21,7 @@ namespace OpenTKSplat.Kinect
 
         public MemoryBuffer1D<VertexData, Stride1D.Dense> gpu_particlesMerged;
         public MemoryBuffer1D<float, Stride1D.Dense> gpu_screen_space_depth;
-        public MemoryBuffer1D<int, Stride1D.Dense> gpu_particle_index;
+        public CudaGlInteropIndexBuffer cudaGlInteropIndexBuffer;
 
         public MemoryBuffer1D<int, Stride1D.Dense> sortTmpBuffer;
         public RadixSortPairs<float, Stride1D.Dense, int, Stride1D.Dense> radixSort;
@@ -57,7 +58,7 @@ namespace OpenTKSplat.Kinect
             indexBufferHandle = GCHandle.Alloc(cpu_particle_index_buffer, GCHandleType.Pinned);
 
             gpu_screen_space_depth = gpu.Allocate1D<float>(vertexData.Length);
-            gpu_particle_index = gpu.Allocate1D<int>(vertexData.Length);
+            cudaGlInteropIndexBuffer = new CudaGlInteropIndexBuffer(vertexData.Length, gpu as CudaAccelerator);
             gpu_particlesMerged = gpu.Allocate1D(vertexData);
 
             radixSort = gpu.CreateRadixSortPairs<float, Stride1D.Dense, int, Stride1D.Dense, DescendingFloat>();
@@ -80,13 +81,16 @@ namespace OpenTKSplat.Kinect
 
         public void sort(Matrix4 viewCamera)
         {
-            particlePacker((int)gpu_particlesMerged.Length, gpu_screen_space_depth, gpu_particle_index, gpu_particlesMerged, viewCamera);
-            radixSort(gpu.DefaultStream, gpu_screen_space_depth, gpu_particle_index, sortTmpBuffer.View);
+            cudaGlInteropIndexBuffer.MapCuda(gpu.DefaultStream as CudaStream);
+
+            var gpuParticleIndexView = cudaGlInteropIndexBuffer.GetCudaArrayView();
+
+            particlePacker((int)gpu_particlesMerged.Length, gpu_screen_space_depth, gpuParticleIndexView, gpu_particlesMerged, viewCamera);
+            radixSort(gpu.DefaultStream, gpu_screen_space_depth, gpuParticleIndexView, sortTmpBuffer.View);
 
             gpu.Synchronize();
 
-            using var index_scope = gpu.CreatePageLockFromPinned(cpu_particle_index_buffer);
-            gpu_particle_index.View.CopyToPageLockedAsync(index_scope);
+            cudaGlInteropIndexBuffer.UnmapCuda(gpu.DefaultStream as CudaStream);
 
             gpu.Synchronize();
         }
@@ -94,7 +98,7 @@ namespace OpenTKSplat.Kinect
         public void DisposeBuffers()
         {
             gpu_screen_space_depth.Dispose();
-            gpu_particle_index.Dispose();
+            cudaGlInteropIndexBuffer.Dispose();
             gpu_particlesMerged.Dispose();
             sortTmpBuffer.Dispose();
 

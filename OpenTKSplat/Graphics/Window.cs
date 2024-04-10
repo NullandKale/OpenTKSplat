@@ -28,7 +28,6 @@ namespace OpenTKSplat
 
         private GaussianData _rawData;
         private VertexData[] _gaussians;
-        private int _indexBuffer;
 
         PointCloudSorter sorter;
 
@@ -38,16 +37,12 @@ namespace OpenTKSplat
             _camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
 
             //string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
-            string file = @"D:\Videos\Splats\20240103_165340.ply";
-
+            string file = @"D:\Videos\Splats\Oblivion_Market_District_200_2.ply";
 
             Console.WriteLine($"Loading {file}...");
             _rawData = GaussianData.LoadPly(file);
             _gaussians = _rawData.Flatten();
             Console.WriteLine($"Loaded {_gaussians.Length} splats");
-
-            // Initialize index buffer
-            _indexBuffer = GL.GenBuffer();
 
             sorter = new PointCloudSorter(_gaussians);
         }
@@ -234,9 +229,9 @@ namespace OpenTKSplat
 
             sorter.sort(viewMatrix);
 
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _indexBuffer);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussians.Length * sizeof(int), sorter.cpu_particle_index_buffer, BufferUsageHint.DynamicDraw);
-            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, _indexBuffer);
+            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, sorter.cudaGlInteropIndexBuffer._glBufferHandle);
+            //GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussians.Length * sizeof(int), sorter.cpu_particle_index_buffer, BufferUsageHint.DynamicDraw);
+            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer._glBufferHandle);
 
             GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, _gaussians.Length);
 
