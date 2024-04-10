@@ -7,11 +7,18 @@ using OpenTKSplat.Graphics;
 using OpenTKSplat.Data;
 using System.Runtime.CompilerServices;
 using OpenTKSplat.Kinect;
+using System.Diagnostics;
 
 namespace OpenTKSplat
 {
     public class Window : GameWindow
     {
+        private Stopwatch _timer = new Stopwatch();
+        private Queue<double> _fpsValues = new Queue<double>();
+        private double _fpsSum = 0;
+        private double _printFpsInterval = 5000; // 5000 milliseconds = 5 seconds
+        private double _lastPrintTime = 0;
+
         private Camera _camera;
         private Shader _shader;
 
@@ -33,8 +40,11 @@ namespace OpenTKSplat
             //string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
             string file = @"D:\Videos\Splats\20240103_165340.ply";
 
+
+            Console.WriteLine($"Loading {file}...");
             _rawData = GaussianData.LoadPly(file);
             _gaussians = _rawData.Flatten();
+            Console.WriteLine($"Loaded {_gaussians.Length} splats");
 
             // Initialize index buffer
             _indexBuffer = GL.GenBuffer();
@@ -60,6 +70,8 @@ namespace OpenTKSplat
             _shader.SetInt("sh_dim", VertexData.SphericalHarmonicsLength);
             _shader.SetFloat("scale_modifier", 1.0f);
             _shader.SetInt("render_mod", 3);
+
+            _timer.Start();
         }
 
         private void SetupGeometry()
@@ -229,6 +241,26 @@ namespace OpenTKSplat
             GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, _gaussians.Length);
 
             SwapBuffers();
+
+            // Calculate FPS for the current frame
+            double fps = 1.0 / args.Time;
+            _fpsSum += fps;
+            _fpsValues.Enqueue(fps);
+
+            // Keep the sliding window to the last 10 seconds
+            while (_fpsValues.Count > 0 && _timer.ElapsedMilliseconds - _lastPrintTime > 10000) // 10 seconds
+            {
+                _fpsSum -= _fpsValues.Dequeue();
+            }
+
+            // Print average FPS every 5 seconds
+            if (_timer.ElapsedMilliseconds - _lastPrintTime >= _printFpsInterval)
+            {
+                double averageFps = _fpsValues.Count > 0 ? _fpsSum / _fpsValues.Count : 0;
+                Console.WriteLine($"Average FPS over the last 10 seconds: {averageFps:F2}");
+                _lastPrintTime = _timer.ElapsedMilliseconds;
+            }
+
         }
     }
 }
