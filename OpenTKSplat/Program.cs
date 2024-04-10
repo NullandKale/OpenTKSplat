@@ -17,7 +17,6 @@ namespace OpenTKSplat
                 Size = new Vector2i(800, 600),
                 Title = "OpenTK Gaussian Splats",
                 WindowState = OpenTK.Windowing.Common.WindowState.Normal,
-                // More settings
             };
 
             using (var window = new Window(GameWindowSettings.Default, nativeWindowSettings))

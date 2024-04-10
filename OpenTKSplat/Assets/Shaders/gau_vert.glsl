@@ -25,9 +25,11 @@ layout(location = 0) in vec2 position;
 #define OPACITY_IDX 10
 #define SH_IDX 11
 
-layout (std430, binding=0) buffer gaussian_data {
+layout(std430, binding = 0) buffer gaussian_data {
 	float g_data[];
 };
+
+
 layout (std430, binding=1) buffer gaussian_order {
 	int gi[];
 };
@@ -106,22 +108,26 @@ vec4 get_vec4(int offset)
 void main()
 {
 	int boxid = gi[gl_InstanceID];
+
 	int total_dim = 3 + 4 + 3 + 1 + 48;
 	int start = boxid * total_dim;
+
 	vec4 g_pos = vec4(get_vec3(start + POS_IDX), 1.f);
+	vec4 g_rot = get_vec4(start + ROT_IDX);
+	vec3 g_scale = get_vec3(start + SCALE_IDX);
+	float g_opacity = g_data[start + OPACITY_IDX];
+
     vec4 g_pos_view = view_matrix * g_pos;
     vec4 g_pos_screen = projection_matrix * g_pos_view;
 	g_pos_screen.xyz = g_pos_screen.xyz / g_pos_screen.w;
     g_pos_screen.w = 1.f;
+
 	// early culling
 	if (any(greaterThan(abs(g_pos_screen.xyz), vec3(1.3))))
 	{
 		gl_Position = vec4(-100, -100, -100, 1);
 		return;
 	}
-	vec4 g_rot = get_vec4(start + ROT_IDX);
-	vec3 g_scale = get_vec3(start + SCALE_IDX);
-	float g_opacity = g_data[start + OPACITY_IDX];
 
     mat3 cov3d = computeCov3D(g_scale * scale_modifier, g_rot);
     vec2 wh = 2 * hfovxy_focal.xy * hfovxy_focal.z;

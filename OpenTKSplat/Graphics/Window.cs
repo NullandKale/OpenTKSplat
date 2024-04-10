@@ -6,6 +6,7 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using OpenTKSplat.Graphics;
 using OpenTKSplat.Data;
 using System.Runtime.CompilerServices;
+using OpenTKSplat.Kinect;
 
 namespace OpenTKSplat
 {
@@ -20,29 +21,25 @@ namespace OpenTKSplat
 
         private GaussianData _rawData;
         private VertexData[] _gaussians;
-        private float[] _gaussianDepths;
-        private int[] _gaussianIndices;
         private int _indexBuffer;
+
+        PointCloudSorter sorter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
         {
             _camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
 
-            string file = "point_cloud.ply";
+            //string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
+            string file = @"D:\Videos\Splats\20240103_165340.ply";
 
             _rawData = GaussianData.LoadPly(file);
             _gaussians = _rawData.Flatten();
 
-            _gaussianDepths = new float[_gaussians.Length];
-            _gaussianIndices = new int[_gaussians.Length];
-            for (int i = 0; i < _gaussians.Length; i++)
-            {
-                _gaussianIndices[i] = i;
-            }
-
             // Initialize index buffer
             _indexBuffer = GL.GenBuffer();
+
+            sorter = new PointCloudSorter(_gaussians);
         }
 
         protected override void OnLoad()
@@ -206,10 +203,10 @@ namespace OpenTKSplat
             _shader.Use();
             GL.BindVertexArray(_vao);
 
+            Matrix4 viewMatrix = _camera.GetViewMatrix();
 
             if (_camera.isPoseDirty)
             {
-                Matrix4 viewMatrix = _camera.GetViewMatrix();
                 _shader.SetMatrix4("view_matrix", viewMatrix);
                 _shader.SetVector3("cam_pos", _camera.Position);
                 _camera.isPoseDirty = false;
@@ -223,91 +220,15 @@ namespace OpenTKSplat
                 _camera.isIntrinDirty = false;
             }
 
-            SortGaussiansParallel();
+            sorter.sort(viewMatrix);
+
+            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _indexBuffer);
+            GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussians.Length * sizeof(int), sorter.cpu_particle_index_buffer, BufferUsageHint.DynamicDraw);
+            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, _indexBuffer);
 
             GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, _gaussians.Length);
 
             SwapBuffers();
-        }
-
-        private void SortGaussians()
-        {
-            Matrix4 viewMatrix = _camera.GetViewMatrix();
-
-            // Calculate depths
-            for (int i = 0; i < _gaussians.Length; i++)
-            {
-                Vector3 position = _gaussians[i].Position;
-                Vector3 rotatedPosition = new Vector3(
-                    Vector3.Dot(position, new Vector3(viewMatrix.M11, viewMatrix.M21, viewMatrix.M31)),
-                    Vector3.Dot(position, new Vector3(viewMatrix.M12, viewMatrix.M22, viewMatrix.M32)),
-                    Vector3.Dot(position, new Vector3(viewMatrix.M13, viewMatrix.M23, viewMatrix.M33))
-                );
-                _gaussianDepths[i] = rotatedPosition.Z + viewMatrix.M43; // Z component after applying rotation and translation
-                _gaussianIndices[i] = i;
-            }
-
-            // Use Array.Sort to sort the indices array based on the depths array
-            Array.Sort(_gaussianDepths, _gaussianIndices);
-
-            // Update buffer with sorted indices
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _indexBuffer);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussianIndices.Length * sizeof(int), _gaussianIndices, BufferUsageHint.DynamicDraw);
-
-            // Bind buffer to the binding index
-            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, _indexBuffer);
-        }
-
-        private void SortGaussiansParallel()
-        {
-            Matrix4 viewMatrix = _camera.GetViewMatrix();
-
-            int coreCount = 4;
-            int chunkSize = _gaussians.Length / coreCount;
-            int leftovers = _gaussians.Length % coreCount;
-
-            // Process the chunks in parallel
-            Parallel.For(0, coreCount, core =>
-            {
-                int start = core * chunkSize;
-                int end = (core + 1) * chunkSize;
-
-                for (int i = start; i < end; i++)
-                {
-                    Vector3 position = _gaussians[i].Position;
-                    Vector3 rotatedPosition = new Vector3(
-                        Vector3.Dot(position, new Vector3(viewMatrix.M11, viewMatrix.M21, viewMatrix.M31)),
-                        Vector3.Dot(position, new Vector3(viewMatrix.M12, viewMatrix.M22, viewMatrix.M32)),
-                        Vector3.Dot(position, new Vector3(viewMatrix.M13, viewMatrix.M23, viewMatrix.M33))
-                    );
-                    _gaussianDepths[i] = rotatedPosition.Z + viewMatrix.M43; // Z component after applying rotation and translation
-                    _gaussianIndices[i] = i;
-                }
-            });
-
-            // Process any leftovers
-            Parallel.For(_gaussians.Length - leftovers, _gaussians.Length, i =>
-            {
-                Vector3 position = _gaussians[i].Position;
-                Vector3 rotatedPosition = new Vector3(
-                    Vector3.Dot(position, new Vector3(viewMatrix.M11, viewMatrix.M21, viewMatrix.M31)),
-                    Vector3.Dot(position, new Vector3(viewMatrix.M12, viewMatrix.M22, viewMatrix.M32)),
-                    Vector3.Dot(position, new Vector3(viewMatrix.M13, viewMatrix.M23, viewMatrix.M33))
-                );
-                _gaussianDepths[i] = rotatedPosition.Z + viewMatrix.M43; // Z component after applying rotation and translation
-                _gaussianIndices[i] = i;
-            });
-
-
-            // Use Array.Sort to sort the indices array based on the depths array
-            Array.Sort(_gaussianDepths, _gaussianIndices);
-
-            // Update buffer with sorted indices
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, _indexBuffer);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussianIndices.Length * sizeof(int), _gaussianIndices, BufferUsageHint.DynamicDraw);
-
-            // Bind buffer to the binding index
-            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, _indexBuffer);
         }
     }
 }
