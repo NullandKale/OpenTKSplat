@@ -44,75 +44,71 @@ namespace OpenTKSplat.Compute
             IntPtr resource);
     }
 
-
-    /// <summary>
-    ///     A 2D floating point buffer that can be read from + written to by both OpenGL and CUDA
-    /// </summary>
     public sealed class CudaGlInteropIndexBuffer : MemoryBuffer
     {
-        private IntPtr _cudaResource;
-        public readonly int _glBufferHandle;
-        private State _state;
-        private readonly int _elementCount;
+        private IntPtr cudaResource;
+        public readonly int glBufferHandle;
+        private State state;
+        private readonly int elementCount;
 
         public CudaGlInteropIndexBuffer(int elementCount, CudaAccelerator accelerator)
             : base(accelerator, elementCount * sizeof(int), sizeof(int))
         {
-            _elementCount = elementCount;
+            this.elementCount = elementCount;
 
             // Create the OpenGL buffer (index buffer in this case)
-            _glBufferHandle = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ElementArrayBuffer, _glBufferHandle);
+            glBufferHandle = GL.GenBuffer();
+            GL.BindBuffer(BufferTarget.ElementArrayBuffer, glBufferHandle);
             GL.BufferData(BufferTarget.ElementArrayBuffer, elementCount * sizeof(int), IntPtr.Zero, BufferUsageHint.DynamicDraw);
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, 0);
 
             // Register the OpenGL buffer with CUDA
             CudaException.ThrowIfFailed(CudaGlInterop.RegisterBuffer(
-                out _cudaResource,
-                _glBufferHandle,
+                out cudaResource,
+                glBufferHandle,
                 (int)CudaGraphicsMapFlags.None)); // None => CUDA can both read and write the buffer
 
-            _state = State.AvailableForGl;
+            state = State.AvailableForGl;
         }
 
         public void MapCuda(CudaStream stream)
         {
-            if (_state == State.AvailableForGl)
+            if (state == State.AvailableForGl)
             {
                 unsafe
                 {
-                    fixed (IntPtr* pResources = &_cudaResource)
+                    fixed (IntPtr* pResources = &cudaResource)
                     {
                         CudaException.ThrowIfFailed(CudaGlInterop.MapResources(
                             1, new IntPtr(pResources), stream.StreamPtr));
                     }
                 }
 
-                _state = State.MappedToCuda;
+                state = State.MappedToCuda;
             }
         }
 
         public ArrayView<int> GetCudaArrayView()
         {
-            if (_state != State.MappedToCuda)
+            if (state != State.MappedToCuda)
                 throw new InvalidOperationException("Buffer must be mapped to CUDA before accessing.");
 
             CudaException.ThrowIfFailed(CudaGlInterop.GetMappedPointer(
-                out var devicePtr, out var bufLen, _cudaResource));
-            Trace.Assert(bufLen == _elementCount * sizeof(int));
+                out var devicePtr, out var bufLen, cudaResource));
+            Trace.Assert(bufLen == elementCount * sizeof(int));
             NativePtr = devicePtr;
 
-            var view = AsArrayView<int>(0, _elementCount);
+            var view = AsArrayView<int>(0, elementCount);
             return view;
         }
 
         public void UnmapCuda(CudaStream stream)
         {
-            if (_state == State.MappedToCuda)
+            if (state == State.MappedToCuda)
             {
                 unsafe
                 {
-                    fixed (IntPtr* pResources = &_cudaResource)
+                    fixed (IntPtr* pResources = &cudaResource)
                     {
                         CudaException.ThrowIfFailed(CudaGlInterop.UnmapResources(
                             1, new IntPtr(pResources), stream.StreamPtr));
@@ -120,7 +116,7 @@ namespace OpenTKSplat.Compute
                 }
 
                 NativePtr = IntPtr.Zero;
-                _state = State.AvailableForGl;
+                state = State.AvailableForGl;
             }
         }
 

@@ -65,7 +65,6 @@ namespace OpenTKSplat.Data
 
     }
 
-
     public static class GaussianDataTest
     {
         public static void MatchSphericalHarmonics(float[] csharpArray, float[] pythonArray)

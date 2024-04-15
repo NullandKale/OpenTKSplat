@@ -9,7 +9,6 @@ namespace OpenTKSplat.Data
         public Vector3 Scale;
         public float Opacity;
         public fixed float SphericalHarmonics[48];
-        public const int SphericalHarmonicsLength = 48;
 
         public VertexData(Vector3 position, Vector4 rotation, Vector3 scale, float opacity, float[] sphericalHarmonics)
         {

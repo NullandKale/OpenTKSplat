@@ -29,7 +29,6 @@ layout(std430, binding = 0) buffer gaussian_data {
 	float g_data[];
 };
 
-
 layout (std430, binding=1) buffer gaussian_order {
 	int gi[];
 };

@@ -13,38 +13,41 @@ namespace OpenTKSplat
 {
     public class Window : GameWindow
     {
-        private Stopwatch _timer = new Stopwatch();
-        private Queue<double> _fpsValues = new Queue<double>();
-        private double _fpsSum = 0;
-        private double _printFpsInterval = 5000; // 5000 milliseconds = 5 seconds
-        private double _lastPrintTime = 0;
+        private FPSCounter fpsCounter;
 
-        private Camera _camera;
-        private Shader _shader;
+        private Camera camera;
+        private Shader shader;
 
-        private int _vertexBuffer;
-        private int _vao;
-        private int _elementBuffer;
+        private int vertexBuffer;
+        private int vao;
+        private int elementBuffer;
 
-        private GaussianData _rawData;
-        private VertexData[] _gaussians;
+        private GaussianData rawData;
+
+        private VertexData[] gaussians;
 
         PointCloudSorter sorter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
         {
-            _camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
+            fpsCounter = new FPSCounter();
+            camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
 
-            //string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
-            string file = @"D:\Videos\Splats\Oblivion_Market_District_200_2.ply";
+            string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
+            //string file = @"D:\Videos\Splats\Oblivion_Market_District_200_2.ply";
+            //string file = @"D:\Videos\Splats\20221007_135905.ply";
+            //string file = @"D:\Videos\Splats\20221007_135536.ply";
+            //string file = @"D:\Videos\Splats\20231224_191934.ply";
+            //string file = @"D:\Videos\Splats\20221025_155143.ply";
+            //string file = @"D:\Videos\Splats\20221026_105130.ply";
 
             Console.WriteLine($"Loading {file}...");
-            _rawData = GaussianData.LoadPly(file);
-            _gaussians = _rawData.Flatten();
-            Console.WriteLine($"Loaded {_gaussians.Length} splats");
+            rawData = GaussianData.LoadPly(file);
+            gaussians = rawData.Flatten();
+            Console.WriteLine($"Loaded {gaussians.Length} splats");
 
-            sorter = new PointCloudSorter(_gaussians);
+            sorter = new PointCloudSorter(gaussians);
         }
 
         protected override void OnLoad()
@@ -56,17 +59,15 @@ namespace OpenTKSplat
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-            _shader = new Shader("Assets\\Shaders\\gau_vert.glsl", "Assets\\Shaders\\gau_frag.glsl");
-            _shader.Use();
+            shader = new Shader("Assets\\Shaders\\gau_vert.glsl", "Assets\\Shaders\\gau_frag.glsl");
+            shader.Use();
 
             SetupGeometry();
             SetupGaussianData();
 
-            _shader.SetInt("sh_dim", VertexData.SphericalHarmonicsLength);
-            _shader.SetFloat("scale_modifier", 1.0f);
-            _shader.SetInt("render_mod", 3);
-
-            _timer.Start();
+            shader.SetInt("sh_dim", 48);
+            shader.SetFloat("scale_modifier", 1.0f);
+            shader.SetInt("render_mod", 3);
         }
 
         private void SetupGeometry()
@@ -75,19 +76,19 @@ namespace OpenTKSplat
             float[] quadVertices = new float[] { -1, 1, 1, 1, 1, -1, -1, -1 };
             uint[] quadFaces = new uint[] { 0, 1, 2, 0, 2, 3 };
 
-            _vao = GL.GenVertexArray();
-            GL.BindVertexArray(_vao);
+            vao = GL.GenVertexArray();
+            GL.BindVertexArray(vao);
 
-            _vertexBuffer = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ArrayBuffer, _vertexBuffer);
+            vertexBuffer = GL.GenBuffer();
+            GL.BindBuffer(BufferTarget.ArrayBuffer, vertexBuffer);
             GL.BufferData(BufferTarget.ArrayBuffer, quadVertices.Length * sizeof(float), quadVertices, BufferUsageHint.StaticDraw);
 
-            _elementBuffer = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ElementArrayBuffer, _elementBuffer);
+            elementBuffer = GL.GenBuffer();
+            GL.BindBuffer(BufferTarget.ElementArrayBuffer, elementBuffer);
             GL.BufferData(BufferTarget.ElementArrayBuffer, quadFaces.Length * sizeof(uint), quadFaces, BufferUsageHint.StaticDraw);
 
             // Get the location of the "position" attribute from the shader
-            int positionLocation = GL.GetAttribLocation(_shader.Handle, "position");
+            int positionLocation = GL.GetAttribLocation(shader.Handle, "position");
 
             // Set the vertex attribute pointers
             GL.VertexAttribPointer(positionLocation, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), 0);
@@ -101,12 +102,12 @@ namespace OpenTKSplat
         private void SetupGaussianData()
         {
             int gaussianSize = Unsafe.SizeOf<VertexData>();
-            int totalSize = _gaussians.Length * gaussianSize;
+            int totalSize = gaussians.Length * gaussianSize;
 
             // Generate a buffer for the gaussian data
             int gaussianBuffer = GL.GenBuffer();
             GL.BindBuffer(BufferTarget.ShaderStorageBuffer, gaussianBuffer);
-            GL.BufferData(BufferTarget.ShaderStorageBuffer, totalSize, _gaussians, BufferUsageHint.StaticDraw);
+            GL.BufferData(BufferTarget.ShaderStorageBuffer, totalSize, gaussians, BufferUsageHint.StaticDraw);
 
             // Bind this buffer to a binding point, e.g., 0
             GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 0, gaussianBuffer);
@@ -147,38 +148,38 @@ namespace OpenTKSplat
 
             // Process mouse movement
             var mouseState = MouseState;
-            _camera.ProcessMouse(mouseState.X, mouseState.Y);
+            camera.ProcessMouse(mouseState.X, mouseState.Y);
 
             // Process mouse buttons
             if (mouseState.IsButtonDown(MouseButton.Left))
             {
-                _camera.isLeftMousePressed = true;
+                camera.isLeftMousePressed = true;
             }
             else
             {
-                _camera.isLeftMousePressed = false;
+                camera.isLeftMousePressed = false;
             }
 
             if (mouseState.IsButtonDown(MouseButton.Right))
             {
-                _camera.isRightMousePressed = true;
+                camera.isRightMousePressed = true;
             }
             else
             {
-                _camera.isRightMousePressed = false;
+                camera.isRightMousePressed = false;
             }
 
             // Process mouse wheel
-            _camera.ProcessWheel(mouseState.ScrollDelta.X, mouseState.ScrollDelta.Y);
+            camera.ProcessWheel(mouseState.ScrollDelta.X, mouseState.ScrollDelta.Y);
 
             // Process keyboard inputs for camera roll
             if (IsKeyDown(Keys.Q))
             {
-                _camera.ProcessRollKey(1);
+                camera.ProcessRollKey(1);
             }
             else if (IsKeyDown(Keys.E))
             {
-                _camera.ProcessRollKey(-1);
+                camera.ProcessRollKey(-1);
             }
         }
 
@@ -187,8 +188,8 @@ namespace OpenTKSplat
             base.OnResize(e);
             GL.Viewport(0, 0, e.Width, e.Height);
 
-            _camera.AspectRatio = e.Width / (float)e.Height;
-            _camera.UpdateResolution(e.Width, e.Height);
+            camera.AspectRatio = e.Width / (float)e.Height;
+            camera.UpdateResolution(e.Width, e.Height);
 
         }
 
@@ -196,9 +197,9 @@ namespace OpenTKSplat
         {
             base.OnUnload();
             GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
-            GL.DeleteBuffer(_vertexBuffer);
-            GL.DeleteVertexArray(_vao);
-            _shader.Dispose();
+            GL.DeleteBuffer(vertexBuffer);
+            GL.DeleteVertexArray(vao);
+            shader.Dispose();
         }
 
         protected override void OnRenderFrame(FrameEventArgs args)
@@ -207,55 +208,34 @@ namespace OpenTKSplat
 
             GL.Clear(ClearBufferMask.ColorBufferBit);
 
-            _shader.Use();
-            GL.BindVertexArray(_vao);
+            shader.Use();
+            GL.BindVertexArray(vao);
 
-            Matrix4 viewMatrix = _camera.GetViewMatrix();
+            Matrix4 viewMatrix = camera.GetViewMatrix();
 
-            if (_camera.isPoseDirty)
+            if (camera.isPoseDirty)
             {
-                _shader.SetMatrix4("view_matrix", viewMatrix);
-                _shader.SetVector3("cam_pos", _camera.Position);
-                _camera.isPoseDirty = false;
+                shader.SetMatrix4("view_matrix", viewMatrix);
+                shader.SetVector3("cam_pos", camera.Position);
+                camera.isPoseDirty = false;
             }
 
-            if (_camera.isIntrinDirty)
+            if (camera.isIntrinDirty)
             {
-                Matrix4 projectionMatrix = _camera.GetProjectionMatrix();
-                _shader.SetMatrix4("projection_matrix", projectionMatrix);
-                _shader.SetVector3("hfovxy_focal", _camera.GetHtanFovxyFocal());
-                _camera.isIntrinDirty = false;
+                Matrix4 projectionMatrix = camera.GetProjectionMatrix();
+                shader.SetMatrix4("projection_matrix", projectionMatrix);
+                shader.SetVector3("hfovxy_focal", camera.GetHtanFovxyFocal());
+                camera.isIntrinDirty = false;
             }
 
             sorter.sort(viewMatrix);
 
-            GL.BindBuffer(BufferTarget.ShaderStorageBuffer, sorter.cudaGlInteropIndexBuffer._glBufferHandle);
-            //GL.BufferData(BufferTarget.ShaderStorageBuffer, _gaussians.Length * sizeof(int), sorter.cpu_particle_index_buffer, BufferUsageHint.DynamicDraw);
-            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer._glBufferHandle);
-
-            GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, _gaussians.Length);
+            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
+            GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, gaussians.Length);
 
             SwapBuffers();
 
-            // Calculate FPS for the current frame
-            double fps = 1.0 / args.Time;
-            _fpsSum += fps;
-            _fpsValues.Enqueue(fps);
-
-            // Keep the sliding window to the last 10 seconds
-            while (_fpsValues.Count > 0 && _timer.ElapsedMilliseconds - _lastPrintTime > 10000) // 10 seconds
-            {
-                _fpsSum -= _fpsValues.Dequeue();
-            }
-
-            // Print average FPS every 5 seconds
-            if (_timer.ElapsedMilliseconds - _lastPrintTime >= _printFpsInterval)
-            {
-                double averageFps = _fpsValues.Count > 0 ? _fpsSum / _fpsValues.Count : 0;
-                Console.WriteLine($"Average FPS over the last 10 seconds: {averageFps:F2}");
-                _lastPrintTime = _timer.ElapsedMilliseconds;
-            }
-
+            fpsCounter.Update(args.Time);
         }
     }
 }

@@ -91,8 +91,6 @@ namespace OpenTKSplat.Kinect
             gpu.Synchronize();
 
             cudaGlInteropIndexBuffer.UnmapCuda(gpu.DefaultStream as CudaStream);
-
-            gpu.Synchronize();
         }
 
         public void DisposeBuffers()
