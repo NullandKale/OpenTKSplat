@@ -26,7 +26,7 @@ namespace OpenTKSplat
 
         private VertexData[] gaussians;
 
-        PointCloudSorter sorter;
+        private PointCloudSorter sorter;
 
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
@@ -34,7 +34,7 @@ namespace OpenTKSplat
             fpsCounter = new FPSCounter();
             camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
 
-            string file = @"C:\Users\alec\Downloads\2020_gaussian_splatting_point_cloud.ply\gs_2020.ply";
+            string file = @"./Assets/gs_2020.ply";
             //string file = @"D:\Videos\Splats\Oblivion_Market_District_200_2.ply";
             //string file = @"D:\Videos\Splats\20221007_135905.ply";
             //string file = @"D:\Videos\Splats\20221007_135536.ply";

@@ -19,6 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Assets\gs_2020.ply">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Assets\Shaders\gau_frag.glsl">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
