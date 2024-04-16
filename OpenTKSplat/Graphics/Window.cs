@@ -8,6 +8,10 @@ using OpenTKSplat.Data;
 using System.Runtime.CompilerServices;
 using OpenTKSplat.Kinect;
 using System.Diagnostics;
+using ILGPU.IR.Analyses;
+using ILGPU.IR.Values;
+using OpenTK.Compute.OpenCL;
+using System.Drawing;
 
 namespace OpenTKSplat
 {
@@ -35,19 +39,7 @@ namespace OpenTKSplat
             camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
 
             string file = @"./Assets/gs_2020.ply";
-            //string file = @"D:\Videos\Splats\Oblivion_Market_District_200_2.ply";
-            //string file = @"D:\Videos\Splats\20221007_135905.ply";
-            //string file = @"D:\Videos\Splats\20221007_135536.ply";
-            //string file = @"D:\Videos\Splats\20231224_191934.ply";
-            //string file = @"D:\Videos\Splats\20221025_155143.ply";
-            //string file = @"D:\Videos\Splats\20221026_105130.ply";
-
-            Console.WriteLine($"Loading {file}...");
-            rawData = GaussianData.LoadPly(file);
-            gaussians = rawData.Flatten();
-            Console.WriteLine($"Loaded {gaussians.Length} splats");
-
-            sorter = new PointCloudSorter(gaussians);
+            LoadAndSetupPlyFile(file);
         }
 
         protected override void OnLoad()
@@ -68,6 +60,40 @@ namespace OpenTKSplat
             shader.SetInt("sh_dim", 48);
             shader.SetFloat("scale_modifier", 1.0f);
             shader.SetInt("render_mod", 3);
+
+            FileDrop += OnFileDrop;
+        }
+
+        private void OnFileDrop(FileDropEventArgs e)
+        {
+            foreach (string file in e.FileNames)
+            {
+                if (file.EndsWith(".ply"))
+                {
+                    LoadAndSetupPlyFile(file);
+                }
+                else
+                {
+                    Console.WriteLine($"Unsupported file format: {file}");
+                }
+            }
+        }
+
+        private void LoadAndSetupPlyFile(string file)
+        {
+            Console.WriteLine($"Loading {file}...");
+            rawData = GaussianData.LoadPly(file);
+            gaussians = rawData.Flatten();
+            Console.WriteLine($"Loaded {gaussians.Length} splats");
+
+            if(sorter != null)
+            {
+                sorter.Dispose();
+            }
+
+            sorter = new PointCloudSorter(gaussians);
+
+            SetupGaussianData();
         }
 
         private void SetupGeometry()
@@ -196,17 +222,17 @@ namespace OpenTKSplat
         protected override void OnUnload()
         {
             base.OnUnload();
+            
             GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
             GL.DeleteBuffer(vertexBuffer);
             GL.DeleteVertexArray(vao);
+
             shader.Dispose();
         }
 
         protected override void OnRenderFrame(FrameEventArgs args)
         {
             base.OnRenderFrame(args);
-
-            GL.Clear(ClearBufferMask.ColorBufferBit);
 
             shader.Use();
             GL.BindVertexArray(vao);
@@ -230,8 +256,30 @@ namespace OpenTKSplat
 
             sorter.sort(viewMatrix);
 
-            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
-            GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, gaussians.Length);
+            if(sorter.cudaGlInteropIndexBuffer.IsValid())
+            {
+                // nsight says this is the issue:
+                // glDrawElementsInstanced using null client - side vertex indices
+                // was detected. This may be due to a previous incompatibility or
+                // an Nsight error.
+                // This may cause unintended problems, including a crash.If a
+                // crash is encountered subsequently to this message, please
+                // investigate this incompatibility as a likely source of error.
+                // If this message interferes with expected operation, set the
+                // 'OpenGL > Report Null Client-Side Buffers' activity option to
+                // 'No' before launch.
+
+                GL.BindBuffer(BufferTarget.ShaderStorageBuffer, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
+                GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
+
+                // System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'
+                GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, gaussians.Length);
+            }
+            else
+            {
+                Console.WriteLine("Index buffer invalid");
+            }
+
 
             SwapBuffers();
 

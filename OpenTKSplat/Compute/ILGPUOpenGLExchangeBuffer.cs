@@ -47,14 +47,14 @@ namespace OpenTKSplat.Compute
     public sealed class CudaGlInteropIndexBuffer : MemoryBuffer
     {
         private IntPtr cudaResource;
-        public readonly int glBufferHandle;
+        public int glBufferHandle;
         private State state;
-        private readonly int elementCount;
+        private int _elementCount;
 
         public CudaGlInteropIndexBuffer(int elementCount, CudaAccelerator accelerator)
             : base(accelerator, elementCount * sizeof(int), sizeof(int))
         {
-            this.elementCount = elementCount;
+            _elementCount = elementCount;
 
             // Create the OpenGL buffer (index buffer in this case)
             glBufferHandle = GL.GenBuffer();
@@ -95,10 +95,10 @@ namespace OpenTKSplat.Compute
 
             CudaException.ThrowIfFailed(CudaGlInterop.GetMappedPointer(
                 out var devicePtr, out var bufLen, cudaResource));
-            Trace.Assert(bufLen == elementCount * sizeof(int));
+            Trace.Assert(bufLen == _elementCount * sizeof(int));
             NativePtr = devicePtr;
 
-            var view = AsArrayView<int>(0, elementCount);
+            var view = AsArrayView<int>(0, _elementCount);
             return view;
         }
 
@@ -196,12 +196,26 @@ namespace OpenTKSplat.Compute
             CudaCopy(stream as CudaStream, sourceView, targetView);
         }
 
+        public bool IsValid()
+        {
+            return glBufferHandle != 0 && GL.IsBuffer(glBufferHandle);
+        }
+
         protected override void DisposeAcceleratorObject(bool disposing)
         {
-            // Unregister the CUDA resource
-            // Delete the gl texture
-            // Delete the gl pbo
-            throw new NotImplementedException();
+            if (disposing)
+            {
+                // Dispose of the OpenGL buffer
+                if (glBufferHandle != 0)
+                {
+                    GL.BindBuffer(BufferTarget.ElementArrayBuffer, 0);
+                    GL.DeleteBuffer(glBufferHandle);
+                    glBufferHandle = 0; // Ensure the handle is reset to prevent reuse
+                }
+            }
+
+            // disposes the cuda memory
+            base.Dispose();
         }
 
         private enum State
