@@ -72,7 +72,6 @@ namespace OpenTKSplat
 
             try
             {
-
                 if(render3D)
                 {
                     // Initialize bridge
