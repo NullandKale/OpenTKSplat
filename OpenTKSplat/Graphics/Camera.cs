@@ -1,16 +1,17 @@
 ﻿using OpenTK.Mathematics;
+using OpenTK.Windowing.GraphicsLibraryFramework;
 
 namespace OpenTKSplat
 {
     public class Camera
     {
-        public float AspectRatio { get; internal set; }
-        public Vector3 Position { get; internal set; }
-        public Vector3 Target { get; private set; }
-        public Vector3 Up { get; private set; }
-        private float Fovy;
-        private float ZNear;
-        private float ZFar;
+        public float AspectRatio;
+        public Vector3 Position;
+        public Vector3 Target;
+        public Vector3 Up;
+        public float Fovy;
+        public float ZNear;
+        public float ZFar;
         private int Width;
         private int Height;
         private float Yaw;
@@ -54,36 +55,47 @@ namespace OpenTKSplat
             TransSensitivity = 0.01f;
             ZoomSensitivity = 0.08f;
             RollSensitivity = 0.03f;
+
+            ProcessMouse(1, 1);
+            ProcessWheel(1, 1);
+
         }
 
-        private Matrix4 GlobalRotMat()
+        public Matrix4 GlobalRotMat()
         {
-            Vector3 x = new Vector3(1f, 0f, 0f);
-            Vector3 z = Vector3.Cross(x, Up);
-            z.Normalize();
-            x = Vector3.Cross(Up, z);
+            Vector3 z = Vector3.Cross(new Vector3(1f, 0f, 0f), Up).Normalized();
+            Vector3 x = Vector3.Cross(Up, z);
             return new Matrix4(new Vector4(x, 0), new Vector4(Up, 0), new Vector4(z, 0), Vector4.UnitW);
         }
 
-        internal Matrix4 GetViewMatrix()
+        public Matrix4 GetViewMatrix()
         {
             return Matrix4.LookAt(Position, Target, Up);
         }
 
-        internal Matrix4 GetProjectionMatrix()
+        public Matrix4 GetProjectionMatrix()
         {
             return Matrix4.CreatePerspectiveFieldOfView(Fovy, Width / (float)Height, ZNear, ZFar);
         }
 
-        internal Vector3 GetHtanFovxyFocal()
+        public Vector3 GetHtanFovxyFocal()
         {
             float htany = MathF.Tan(Fovy / 2);
-            float htanx = htany / Height * Width;
+            float htanx = htany * Width / Height;
             float focal = Height / (2 * htany);
             return new Vector3(htanx, htany, focal);
         }
 
-        internal void ProcessMouse(float xpos, float ypos)
+        public void ProcessInputs(MouseState mouseState, KeyboardState keyboardState)
+        {
+            ProcessMouse(mouseState.X, mouseState.Y);
+            isLeftMousePressed = mouseState.IsButtonDown(MouseButton.Left);
+            isRightMousePressed = mouseState.IsButtonDown(MouseButton.Right);
+            ProcessWheel(mouseState.ScrollDelta.X, mouseState.ScrollDelta.Y);
+            ProcessRollKey(keyboardState.IsKeyDown(Keys.Q) ? 1 : (keyboardState.IsKeyDown(Keys.E) ? -1 : 0));
+        }
+
+        private void ProcessMouse(float xpos, float ypos)
         {
             if (FirstMouse)
             {
@@ -100,33 +112,38 @@ namespace OpenTKSplat
             if (isLeftMousePressed)
             {
                 Yaw += xoffset * RotSensitivity;
-                Pitch += yoffset * RotSensitivity;
+                Pitch = Math.Clamp(Pitch + yoffset * RotSensitivity, -MathF.PI / 2, MathF.PI / 2);
 
-                Pitch = Math.Clamp(Pitch, -MathF.PI / 2, MathF.PI / 2);
-
-                Matrix4 rotMat = GlobalRotMat();
-                Vector3 front = new Vector3(MathF.Cos(Yaw) * MathF.Cos(Pitch), MathF.Sin(Pitch), MathF.Sin(Yaw) * MathF.Cos(Pitch));
-                front = Vector3.TransformNormal(front, rotMat);
-                Position = -front * (Target - Position).Length + Target;
-
-                isPoseDirty = true;
+                UpdatePositionFromOrientation();
             }
 
             if (isRightMousePressed)
             {
-                Vector3 front = Vector3.Normalize(Target - Position);
-                Vector3 right = Vector3.Normalize(Vector3.Cross(Up, front));
-                Position += right * xoffset * TransSensitivity;
-                Target += right * xoffset * TransSensitivity;
-                Vector3 camUp = Vector3.Normalize(Vector3.Cross(right, front));
-                Position += camUp * yoffset * TransSensitivity;
-                Target += camUp * yoffset * TransSensitivity;
-
-                isPoseDirty = true;
+                UpdatePositionFromTranslation(xoffset, yoffset);
             }
         }
 
-        internal void ProcessWheel(float dx, float dy)
+        private void UpdatePositionFromOrientation()
+        {
+            Vector3 front = new Vector3(MathF.Cos(Yaw) * MathF.Cos(Pitch), MathF.Sin(Pitch), MathF.Sin(Yaw) * MathF.Cos(Pitch));
+            front = Vector3.TransformNormal(front, GlobalRotMat());
+            Position = -front * (Target - Position).Length + Target;
+            isPoseDirty = true;
+        }
+
+        private void UpdatePositionFromTranslation(float xoffset, float yoffset)
+        {
+            Vector3 front = Vector3.Normalize(Target - Position);
+            Vector3 right = Vector3.Normalize(Vector3.Cross(Up, front));
+            Position += right * xoffset * TransSensitivity;
+            Target += right * xoffset * TransSensitivity;
+            Vector3 camUp = Vector3.Normalize(Vector3.Cross(right, front));
+            Position += camUp * yoffset * TransSensitivity;
+            Target += camUp * yoffset * TransSensitivity;
+            isPoseDirty = true;
+        }
+
+        private void ProcessWheel(float dx, float dy)
         {
             Vector3 front = Vector3.Normalize(Target - Position);
             Position += front * dy * ZoomSensitivity;
@@ -134,13 +151,16 @@ namespace OpenTKSplat
             isPoseDirty = true;
         }
 
-        internal void ProcessRollKey(int d)
+        private void ProcessRollKey(int direction)
         {
-            Vector3 front = Vector3.Normalize(Target - Position);
-            Vector3 right = Vector3.Cross(front, Up);
-            Vector3 newUp = Up + right * (d * RollSensitivity / right.Length);
-            Up = Vector3.Normalize(newUp);
-            isPoseDirty = true;
+            if (direction != 0)
+            {
+                Vector3 front = Vector3.Normalize(Target - Position);
+                Vector3 right = Vector3.Cross(front, Up);
+                Vector3 newUp = Up + right * (direction * RollSensitivity / right.Length);
+                Up = Vector3.Normalize(newUp);
+                isPoseDirty = true;
+            }
         }
 
         internal void UpdateResolution(int width, int height)

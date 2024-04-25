@@ -37,21 +37,20 @@ uniform mat4 view_matrix;
 uniform mat4 projection_matrix;
 uniform vec3 hfovxy_focal;
 uniform vec3 cam_pos;
-uniform int sh_dim;
-uniform float scale_modifier;
-uniform int render_mod;  // > 0 render 0-ith SH dim, -1 depth, -2 bill board, -3 gaussian
 
 out vec3 color;
 out float alpha;
 out vec3 conic;
 out vec2 coordxy;  // local coordinate in quad, unit in pixel
 
-mat3 computeCov3D(vec3 scale, vec4 q)  // should be correct
+mat3 computeCov3D(vec3 scale, vec4 q)
 {
     mat3 S = mat3(0.f);
-    S[0][0] = scale.x;
+    
+	S[0][0] = scale.x;
 	S[1][1] = scale.y;
 	S[2][2] = scale.z;
+
 	float r = q.x;
 	float x = q.y;
 	float y = q.z;
@@ -71,6 +70,7 @@ mat3 computeCov3D(vec3 scale, vec4 q)  // should be correct
 vec3 computeCov2D(vec4 mean_view, float focal_x, float focal_y, float tan_fovx, float tan_fovy, mat3 cov3D, mat4 viewmatrix)
 {
     vec4 t = mean_view;
+
     // why need this? Try remove this later
     float limx = 1.3f * tan_fovx;
     float limy = 1.3f * tan_fovy;
@@ -88,6 +88,7 @@ vec3 computeCov2D(vec4 mean_view, float focal_x, float focal_y, float tan_fovx, 
     mat3 T = W * J;
 
     mat3 cov = transpose(T) * transpose(cov3D) * T;
+
     // Apply low-pass filter: every Gaussian should be at least
 	// one pixel wide/high. Discard 3rd row and column.
 	cov[0][0] += 0.3f;
@@ -99,36 +100,43 @@ vec3 get_vec3(int offset)
 {
 	return vec3(g_data[offset], g_data[offset + 1], g_data[offset + 2]);
 }
+
 vec4 get_vec4(int offset)
 {
 	return vec4(g_data[offset], g_data[offset + 1], g_data[offset + 2], g_data[offset + 3]);
 }
 
+const float CULL_THRESHOLD = 1.3;
+
 void main()
 {
 	int boxid = gi[gl_InstanceID];
 
-	int total_dim = 3 + 4 + 3 + 1 + 48;
+	const int total_dim = 3 + 4 + 3 + 1 + 48;
 	int start = boxid * total_dim;
 
 	vec4 g_pos = vec4(get_vec3(start + POS_IDX), 1.f);
-	vec4 g_rot = get_vec4(start + ROT_IDX);
-	vec3 g_scale = get_vec3(start + SCALE_IDX);
-	float g_opacity = g_data[start + OPACITY_IDX];
 
     vec4 g_pos_view = view_matrix * g_pos;
     vec4 g_pos_screen = projection_matrix * g_pos_view;
+
 	g_pos_screen.xyz = g_pos_screen.xyz / g_pos_screen.w;
     g_pos_screen.w = 1.f;
 
-	// early culling
-	if (any(greaterThan(abs(g_pos_screen.xyz), vec3(1.3))))
-	{
-		gl_Position = vec4(-100, -100, -100, 1);
+	// Optimized culling check
+	if (g_pos_screen.x < -CULL_THRESHOLD || g_pos_screen.x > CULL_THRESHOLD ||
+		g_pos_screen.y < -CULL_THRESHOLD || g_pos_screen.y > CULL_THRESHOLD ||
+		g_pos_screen.z < -CULL_THRESHOLD || g_pos_screen.z > CULL_THRESHOLD) {
+		gl_Position = vec4(0, 0, -1, 0); // Discard in clip space
 		return;
 	}
 
-    mat3 cov3d = computeCov3D(g_scale * scale_modifier, g_rot);
+
+	vec4 g_rot = get_vec4(start + ROT_IDX);
+	vec3 g_scale = get_vec3(start + SCALE_IDX);
+
+    mat3 cov3d = computeCov3D(g_scale, g_rot);
+
     vec2 wh = 2 * hfovxy_focal.xy * hfovxy_focal.z;
     vec3 cov2d = computeCov2D(g_pos_view, 
                               hfovxy_focal.z, 
@@ -140,6 +148,7 @@ void main()
 
     // Invert covariance (EWA algorithm)
 	float det = (cov2d.x * cov2d.z - cov2d.y * cov2d.y);
+
 	if (det == 0.0f)
 		gl_Position = vec4(0.f, 0.f, 0.f, 0.f);
     
@@ -148,57 +157,55 @@ void main()
     
     vec2 quadwh_scr = vec2(3.f * sqrt(cov2d.x), 3.f * sqrt(cov2d.z));  // screen space half quad height and width
     vec2 quadwh_ndc = quadwh_scr / wh * 2;  // in ndc space
+
     g_pos_screen.xy = g_pos_screen.xy + position * quadwh_ndc;
     coordxy = position * quadwh_scr;
     gl_Position = g_pos_screen;
     
-    alpha = g_opacity;
-
-	if (render_mod == -1)
-	{
-		float depth = -g_pos_view.z;
-		depth = depth < 0.05 ? 1 : depth;
-		depth = 1 / depth;
-		color = vec3(depth, depth, depth);
-		return;
-	}
+    alpha = g_data[start + OPACITY_IDX];
 
 	// Covert SH to color
-	int sh_start = start + SH_IDX;
 	vec3 dir = g_pos.xyz - cam_pos;
     dir = normalize(dir);
-	color = SH_C0 * get_vec3(sh_start);
-	
-	if (sh_dim > 3 && render_mod >= 1)  // 1 * 3
-	{
-		float x = dir.x;
-		float y = dir.y;
-		float z = dir.z;
-		color = color - SH_C1 * y * get_vec3(sh_start + 1 * 3) + SH_C1 * z * get_vec3(sh_start + 2 * 3) - SH_C1 * x * get_vec3(sh_start + 3 * 3);
 
-		if (sh_dim > 12 && render_mod >= 2)  // (1 + 3) * 3
-		{
-			float xx = x * x, yy = y * y, zz = z * z;
-			float xy = x * y, yz = y * z, xz = x * z;
-			color = color +
-				SH_C2_0 * xy * get_vec3(sh_start + 4 * 3) +
-				SH_C2_1 * yz * get_vec3(sh_start + 5 * 3) +
-				SH_C2_2 * (2.0f * zz - xx - yy) * get_vec3(sh_start + 6 * 3) +
-				SH_C2_3 * xz * get_vec3(sh_start + 7 * 3) +
-				SH_C2_4 * (xx - yy) * get_vec3(sh_start + 8 * 3);
+	float x = dir.x;
+	float y = dir.y;
+	float z = dir.z;
 
-			if (sh_dim > 27 && render_mod >= 3)  // (1 + 3 + 5) * 3
-			{
-				color = color +
-					SH_C3_0 * y * (3.0f * xx - yy) * get_vec3(sh_start + 9 * 3) +
-					SH_C3_1 * xy * z * get_vec3(sh_start + 10 * 3) +
-					SH_C3_2 * y * (4.0f * zz - xx - yy) * get_vec3(sh_start + 11 * 3) +
-					SH_C3_3 * z * (2.0f * zz - 3.0f * xx - 3.0f * yy) * get_vec3(sh_start + 12 * 3) +
-					SH_C3_4 * x * (4.0f * zz - xx - yy) * get_vec3(sh_start + 13 * 3) +
-					SH_C3_5 * z * (xx - yy) * get_vec3(sh_start + 14 * 3) +
-					SH_C3_6 * x * (xx - 3.0f * yy) * get_vec3(sh_start + 15 * 3);
-			}
-		}
+	float xx = x * x;
+	float yy = y * y;
+	float zz = z * z;
+	float xy = x * y;
+	float yz = y * z;
+	float xz = x * z;
+
+	// Fetch all SH data at once
+
+	int sh_start = start + SH_IDX;
+	vec3 sh_data[16]; // Array to hold all SH data
+	for (int i = 0; i < 16; ++i) {
+		sh_data[i] = get_vec3(sh_start + i * 3);
 	}
+
+	color = SH_C0 * sh_data[0];
+
+	color = color - SH_C1 * y * sh_data[1] + SH_C1 * z * sh_data[2] - SH_C1 * x * sh_data[3];
+
+	color = color +
+		SH_C2_0 * xy * sh_data[4] +
+		SH_C2_1 * yz * sh_data[5] +
+		SH_C2_2 * (2.0f * zz - xx - yy) * sh_data[6] +
+		SH_C2_3 * xz * sh_data[7] +
+		SH_C2_4 * (xx - yy) * sh_data[8];
+
+	color = color +
+		SH_C3_0 * y * (3.0f * xx - yy) * sh_data[9] +
+		SH_C3_1 * xy * z * sh_data[10] +
+		SH_C3_2 * y * (4.0f * zz - xx - yy) * sh_data[11] +
+		SH_C3_3 * z * (2.0f * zz - 3.0f * xx - 3.0f * yy) * sh_data[12] +
+		SH_C3_4 * x * (4.0f * zz - xx - yy) * sh_data[13] +
+		SH_C3_5 * z * (xx - yy) * sh_data[14] +
+		SH_C3_6 * x * (xx - 3.0f * yy) * sh_data[15];
+
 	color += 0.5f;
 }

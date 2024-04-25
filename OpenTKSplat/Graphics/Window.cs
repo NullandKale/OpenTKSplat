@@ -22,6 +22,9 @@ namespace OpenTKSplat
         private Camera camera;
         private Shader shader;
 
+        public BridgeInProc.Window bridge_window;
+        public Quilt quilt;
+
         private int vertexBuffer;
         private int vao;
         private int elementBuffer;
@@ -32,14 +35,22 @@ namespace OpenTKSplat
 
         private PointCloudSorter sorter;
 
+        private float depthiness = 0.02f;
+        private float depthinessDelta = 0.001f;
+
+        private float focus = 0;
+        private float focusDelta = 0.1f;
+
+        private bool sortOnce = true;
+        private bool render3D = true;
+
+        private uint quiltScale = 4;
+
         public Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
         {
             fpsCounter = new FPSCounter();
             camera = new Camera(nativeWindowSettings.ClientSize.X, nativeWindowSettings.ClientSize.Y);
-
-            string file = @"./Assets/gs_2020.ply";
-            LoadAndSetupPlyFile(file);
         }
 
         protected override void OnLoad()
@@ -54,12 +65,37 @@ namespace OpenTKSplat
             shader = new Shader("Assets\\Shaders\\gau_vert.glsl", "Assets\\Shaders\\gau_frag.glsl");
             shader.Use();
 
-            SetupGeometry();
-            SetupGaussianData();
-
-            shader.SetInt("sh_dim", 48);
             shader.SetFloat("scale_modifier", 1.0f);
-            shader.SetInt("render_mod", 3);
+
+            string file = @"./Assets/gs_2020.ply";
+            LoadAndSetupPlyFile(file);
+
+            try
+            {
+
+                if(render3D)
+                {
+                    // Initialize bridge
+                    BridgeInProc.Controller.Initialize();
+
+                    // Instance the window on the looking glass display
+                    if (BridgeInProc.Controller.InstanceWindowGL(ref bridge_window, true))
+                    {
+                        // allocate a framebuffer for the window
+                        quilt = new Quilt(bridge_window, quiltScale, 8, 6);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+                Console.WriteLine("Failed to connect to Looking Glass display, rendering 2D only");
+            }
+
+            if (quilt != null && quilt.valid)
+            {
+                Size = new Vector2i((int)quilt.window_width / (int)quiltScale, (int)quilt.window_height / (int)quiltScale);
+            }
 
             FileDrop += OnFileDrop;
         }
@@ -91,8 +127,9 @@ namespace OpenTKSplat
                 sorter.Dispose();
             }
 
-            sorter = new PointCloudSorter(gaussians);
+            sorter = new PointCloudSorter(rawData.Positions);
 
+            SetupGeometry();
             SetupGaussianData();
         }
 
@@ -172,41 +209,27 @@ namespace OpenTKSplat
                 Close();
             }
 
-            // Process mouse movement
-            var mouseState = MouseState;
-            camera.ProcessMouse(mouseState.X, mouseState.Y);
-
-            // Process mouse buttons
-            if (mouseState.IsButtonDown(MouseButton.Left))
+            // Check for left or right arrow keys to adjust depthiness
+            if (IsKeyDown(Keys.Left))
             {
-                camera.isLeftMousePressed = true;
+                depthiness -= depthinessDelta;
             }
-            else
+            else if (IsKeyDown(Keys.Right))
             {
-                camera.isLeftMousePressed = false;
+                depthiness += depthinessDelta;
             }
 
-            if (mouseState.IsButtonDown(MouseButton.Right))
+            // Check for up or down arrow keys to adjust focus
+            if (IsKeyDown(Keys.Up))
             {
-                camera.isRightMousePressed = true;
+                focus += focusDelta;
             }
-            else
+            else if (IsKeyDown(Keys.Down))
             {
-                camera.isRightMousePressed = false;
+                focus -= focusDelta;
             }
 
-            // Process mouse wheel
-            camera.ProcessWheel(mouseState.ScrollDelta.X, mouseState.ScrollDelta.Y);
-
-            // Process keyboard inputs for camera roll
-            if (IsKeyDown(Keys.Q))
-            {
-                camera.ProcessRollKey(1);
-            }
-            else if (IsKeyDown(Keys.E))
-            {
-                camera.ProcessRollKey(-1);
-            }
+            camera.ProcessInputs(MouseState, KeyboardState);
         }
 
         protected override void OnResize(ResizeEventArgs e)
@@ -217,6 +240,7 @@ namespace OpenTKSplat
             camera.AspectRatio = e.Width / (float)e.Height;
             camera.UpdateResolution(e.Width, e.Height);
 
+            shader.SetVector3("hfovxy_focal", camera.GetHtanFovxyFocal());
         }
 
         protected override void OnUnload()
@@ -230,56 +254,55 @@ namespace OpenTKSplat
             shader.Dispose();
         }
 
+
+        private void render(Matrix4 viewMatrix, Matrix4 projectionMatrix)
+        {
+            shader.SetMatrix4("view_matrix", viewMatrix);
+            shader.SetVector3("cam_pos", camera.Position);
+            shader.SetMatrix4("projection_matrix", projectionMatrix);
+
+            if(!sortOnce)
+            {
+                sorter.sort(viewMatrix);
+            }
+
+            GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
+            GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, gaussians.Length);
+
+        }
+
         protected override void OnRenderFrame(FrameEventArgs args)
         {
             base.OnRenderFrame(args);
 
+            Matrix4 viewMatrix;
+            Matrix4 projectionMatrix;
+
+            if(sortOnce)
+            {
+                viewMatrix = camera.GetViewMatrix();
+                sorter.sort(viewMatrix);
+            }
+
             shader.Use();
             GL.BindVertexArray(vao);
 
-            Matrix4 viewMatrix = camera.GetViewMatrix();
-
-            if (camera.isPoseDirty)
+            // draw 3d
+            if (quilt != null && quilt.valid)
             {
-                shader.SetMatrix4("view_matrix", viewMatrix);
-                shader.SetVector3("cam_pos", camera.Position);
-                camera.isPoseDirty = false;
+                quilt.Draw(render, camera, depthiness, focus);
             }
 
-            if (camera.isIntrinDirty)
-            {
-                Matrix4 projectionMatrix = camera.GetProjectionMatrix();
-                shader.SetMatrix4("projection_matrix", projectionMatrix);
-                shader.SetVector3("hfovxy_focal", camera.GetHtanFovxyFocal());
-                camera.isIntrinDirty = false;
-            }
+            // draw 2d
+            viewMatrix = camera.GetViewMatrix();
+            projectionMatrix = camera.GetProjectionMatrix();
 
-            sorter.sort(viewMatrix);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
 
-            if(sorter.cudaGlInteropIndexBuffer.IsValid())
-            {
-                // nsight says this is the issue:
-                // glDrawElementsInstanced using null client - side vertex indices
-                // was detected. This may be due to a previous incompatibility or
-                // an Nsight error.
-                // This may cause unintended problems, including a crash.If a
-                // crash is encountered subsequently to this message, please
-                // investigate this incompatibility as a likely source of error.
-                // If this message interferes with expected operation, set the
-                // 'OpenGL > Report Null Client-Side Buffers' activity option to
-                // 'No' before launch.
+            GL.Clear(ClearBufferMask.ColorBufferBit);
+            GL.Viewport(0, 0, Size.X, Size.Y);
 
-                GL.BindBuffer(BufferTarget.ShaderStorageBuffer, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
-                GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, sorter.cudaGlInteropIndexBuffer.glBufferHandle);
-
-                // System.AccessViolationException: 'Attempted to read or write protected memory. This is often an indication that other memory is corrupt.'
-                GL.DrawElementsInstanced(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, 0, gaussians.Length);
-            }
-            else
-            {
-                Console.WriteLine("Index buffer invalid");
-            }
-
+            render(viewMatrix, projectionMatrix);
 
             SwapBuffers();
 

@@ -1,39 +1,45 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 public class FPSCounter
 {
     private Queue<double> fpsValues = new Queue<double>();
     private double fpsSum = 0;
-    private Stopwatch timer = new Stopwatch();
-    private double printFpsInterval = 5000;
-    private double fpsWindowLength = 10000;
-    private double lastPrintTime = 0;
-
-    public FPSCounter()
-    {
-        timer.Start();
-    }
+    private double elapsedWindowTime = 0;  // Total elapsed time for the current window
+    private double printFpsInterval = 5;  // Print interval in seconds
+    private double fpsWindowLength = 10;  // Window length in seconds
+    private double timeSinceLastPrint = 0;
+    private int countToDrop = 2; // the first two frames often have atypical frame times
 
     public void Update(double frameTime)
     {
+        if (countToDrop > 0)
+        {
+            countToDrop--;
+            return;  // Skip the initial unstable frames
+        }
+
         double fps = 1.0 / frameTime;
         fpsSum += fps;
         fpsValues.Enqueue(fps);
+        elapsedWindowTime += frameTime;
 
-        // Keep the sliding window
-        while (fpsValues.Count > 0 && timer.ElapsedMilliseconds - lastPrintTime > fpsWindowLength)
+        // Maintain the sliding window of the specified length
+        while (elapsedWindowTime > fpsWindowLength)
         {
-            fpsSum -= fpsValues.Dequeue();
+            elapsedWindowTime -= frameTime;  // Reduce the oldest frame time from the total elapsed time
+            fpsSum -= fpsValues.Dequeue();  // Remove the oldest fps value
         }
 
-        // Print average FPS every 5 seconds
-        if (timer.ElapsedMilliseconds - lastPrintTime >= printFpsInterval)
+        // Track the time since the last FPS printout
+        timeSinceLastPrint += frameTime;
+
+        // Print average FPS every specified interval, only if enough time has passed
+        if (timeSinceLastPrint >= printFpsInterval)
         {
             double averageFps = fpsValues.Count > 0 ? fpsSum / fpsValues.Count : 0;
-            Console.WriteLine($"Average FPS over the last 10 seconds: {averageFps:F2}");
-            lastPrintTime = timer.ElapsedMilliseconds;
+            Console.WriteLine($"Average FPS over the last {fpsWindowLength} seconds: {averageFps:F2}");
+            timeSinceLastPrint = 0;  // Reset the time since last print
         }
     }
 }

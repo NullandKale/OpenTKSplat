@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <Folder Include="Assets\Shaders\" />
+    <Folder Include="Docs\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +27,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Assets\Shaders\gau_vert.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="bridge_inproc.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
