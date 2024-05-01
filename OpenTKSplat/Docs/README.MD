@@ -8,8 +8,7 @@ From a high level this program does the following:
 
 # Loading a .ply file:
 1. [What is a Gaussian Splat?](1_Loading/GaussianSplat.md)
-2. [What is a .ply file?](1_Loading/PlyFile.md)
-3. [The neat loading trick I am using](1_Loading/PlyLoading.md)
+2. [What is a .ply file?](1_Loading/PlyLoading.md)
 
 # Rendering
-1. 
+1. [Rendering Particles. Really Fast.](2_Rendering/2DRendering.md)

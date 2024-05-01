@@ -19,12 +19,12 @@ namespace OpenTKSplat.Data
             SphericalHarmonics = new float[vertexCount, shDimension];
         }
 
-        public VertexData[] Flatten()
+        public GaussianSplat[] Flatten()
         {
             int vertexCount = Positions.Length;
             int shDimension = SphericalHarmonics.GetLength(1);
 
-            VertexData[] flatData = new VertexData[vertexCount];
+            GaussianSplat[] flatData = new GaussianSplat[vertexCount];
 
             for (int i = 0; i < vertexCount; i++)
             {
@@ -34,7 +34,7 @@ namespace OpenTKSplat.Data
                     shData[j] = SphericalHarmonics[i, j];
                 }
 
-                flatData[i] = new VertexData(Positions[i], Rotations[i], Scales[i], Opacities[i], shData);
+                flatData[i] = new GaussianSplat(Positions[i], Rotations[i], Scales[i], Opacities[i], shData);
             }
 
             return flatData;
@@ -134,11 +134,11 @@ namespace OpenTKSplat.Data
 
             for (int j = 0; j < extraFeatureCount; j++)
             {
-                int baseIndexCSharp = 3 + j * 3;
+                int shFeatureStartIndex = 3 + j * 3;
                 for (int k = 0; k < 3; k++)
                 {
                     int indexExtra = j + k * extraFeatureCount;
-                    int indexSH = baseIndexCSharp + k;
+                    int indexSH = shFeatureStartIndex + k;
                     data.SphericalHarmonics[i, indexSH] = featuresExtra[indexExtra];
                 }
             }

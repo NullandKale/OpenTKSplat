@@ -119,7 +119,7 @@ namespace OpenTKSplat.Data
         }
 
 
-        private unsafe static void PrintVertexData(string title, VertexData pythonVertexData, VertexData vertexData)
+        private unsafe static void PrintVertexData(string title, GaussianSplat pythonVertexData, GaussianSplat vertexData)
         {
             Console.WriteLine(title);
             CompareAndPrint("Position", vertexData.Position, pythonVertexData.Position);
@@ -205,9 +205,9 @@ namespace OpenTKSplat.Data
 
             // Retrieve specific vertex data
             int vertexIndex = 100;
-            VertexData vertexData = data[vertexIndex];
+            GaussianSplat vertexData = data[vertexIndex];
 
-            VertexData pythonVertexData = new VertexData(
+            GaussianSplat pythonVertexData = new GaussianSplat(
                 new Vector3(0.7187582f, 1.712764f, 0.9231456f),
                 new Vector4(1f, 0f, 0f, 0f),
                 new Vector3(0.01418768f, 0.00030839f, 0.01934555f),

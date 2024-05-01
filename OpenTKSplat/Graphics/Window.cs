@@ -31,7 +31,7 @@ namespace OpenTKSplat
 
         private GaussianData rawData;
 
-        private VertexData[] gaussians;
+        private GaussianSplat[] gaussians;
 
         private PointCloudSorter sorter;
 
@@ -163,7 +163,7 @@ namespace OpenTKSplat
 
         private void SetupGaussianData()
         {
-            int gaussianSize = Unsafe.SizeOf<VertexData>();
+            int gaussianSize = Unsafe.SizeOf<GaussianSplat>();
             int totalSize = gaussians.Length * gaussianSize;
 
             // Generate a buffer for the gaussian data
