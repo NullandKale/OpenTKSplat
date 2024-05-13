@@ -11,4 +11,4 @@ From a high level this program does the following:
 2. [What is a .ply file?](1_Loading/PlyLoading.md)
 
 # Rendering
-1. [Rendering Particles. Really Fast.](2_Rendering/2DRendering.md)
+1. [Rendering Splats. Really Fast.](2_Rendering/2DRendering.md)

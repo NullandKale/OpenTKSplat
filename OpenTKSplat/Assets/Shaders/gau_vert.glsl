@@ -17,13 +17,13 @@
 #define SH_C3_5 1.445305721320277f
 #define SH_C3_6 -0.5900435899266435f
 
-layout(location = 0) in vec2 position;
-
 #define POS_IDX 0
 #define ROT_IDX 3
 #define SCALE_IDX 7
 #define OPACITY_IDX 10
 #define SH_IDX 11
+
+layout(location = 0) in vec2 position;
 
 layout(std430, binding = 0) buffer gaussian_data {
 	float g_data[];

@@ -2,7 +2,7 @@
 
 Currently there are many forms for storing splats but this repo just supports the simplest storage method: the .ply file. 
 
-This stores an array of structs, and the definition of that struct such that it is easy to parse and is not platform dependent.
+This stores an array of structs, and the definition of that struct, such that it is easy to parse and is not platform dependent.
 
 If you open a .ply file in a text editor like VS code or notepad++ you will see something that looks like this followed by a bunch of garbage.
 
@@ -75,11 +75,11 @@ property float rot_3
 end_header
 ```
 
-This is the header and it specifies the count of particles, and the same GaussianSplat struct that we were looking at before, but does not pack the data into arrays or Vec3 / Vec4's for us.
+This is the header and it specifies the count of particles, and the same GaussianSplat struct that we were looking at before, you will see many more parameters, but this is just because the .ply file does not pack the data into arrays or Vec3 / Vec4's for us.
 
 The garbage data after the header is the exact bytes of the set of particles, in the order and with the data type specified in the header.
 
-You could in theory copy this data directly into an object in memory, but it would be in a weird order, and I wanted the GaussianSplats to be in nice little structs that we could reason about easily. 
+You could in theory copy this data directly into an object in memory, but it would be in a weird order, and include some extra data we do not need. I wanted the GaussianSplats to be in nice little structs that we could reason about easily, so I needed a way to easily and quickly parse the data inside the .ply file. 
 
 # The neat little trick, treating the ply file like a dict
 
@@ -88,6 +88,7 @@ using OpenTK.Mathematics;
 
 namespace OpenTKSplat.Data
 {
+    // for faster parsing we initially store the Gaussian Data as a struct of arrays
     public class GaussianData
     {
         public Vector3[] Positions;
@@ -105,6 +106,7 @@ namespace OpenTKSplat.Data
             SphericalHarmonics = new float[vertexCount, shDimension];
         }
 
+        // this flattens the struct of arrays to an array of structs for use on the gpu
         public GaussianSplat[] Flatten()
         {
             int vertexCount = Positions.Length;
@@ -126,20 +128,29 @@ namespace OpenTKSplat.Data
             return flatData;
         }
 
+        // This is the actual entry point for the loading functionality.
         public static GaussianData LoadPly(string path)
         {
+            // load the file and create a PlyData object.
             PlyData ply = PlyData.Load(path);
             int vertexCount = ply.vertexCount;
             int maxShDegree = 3;
             int extraFeatureCount = (maxShDegree + 1) * (maxShDegree + 1) - 1;
             int shDimension = 3 * extraFeatureCount + 3; // 3 for diffuse color + rest for spherical harmonics
             
+            // pre allocate all the arrays.
             GaussianData data = new GaussianData(vertexCount, shDimension);
 
+            // this should always be true, and we could probably remove it.
             bool rotFieldsExist = ply.HasField("rot_0");
 
+            // I process all of the splats in parallel across as many cores as possible
+            // its REALLY inefficient to send millions of tasks to the C# task scheduler
+            // instead I run one task per core that loops over a chunk of the splats
             int coreCount = Environment.ProcessorCount;
             int chunkSize = vertexCount / coreCount;
+
+            // we may have up to coreCount - 1 leftovers that we cannot forget about
             int leftovers = vertexCount % coreCount;
 
             // Process the chunks
@@ -163,6 +174,10 @@ namespace OpenTKSplat.Data
             return data;
         }
 
+
+        // this function is called in parallel and queries the data stored in the PlyData
+        // some of the data in the ply file needs post processing, this is another reason
+        // why doing this on all cores in parallel such a large speed up.
         private static void LoadVert(int i, int extraFeatureCount, PlyData ply, GaussianData data, bool rotFieldsExist)
         {
             // Reading positions
@@ -199,6 +214,7 @@ namespace OpenTKSplat.Data
             }
 
             // Handling spherical harmonics and diffuse color features
+            // They have weird names so you need to set them up just right.
             float[] featuresDc = new float[3];
             featuresDc[0] = ply.GetProperty<float>(i, "f_dc_0");
             featuresDc[1] = ply.GetProperty<float>(i, "f_dc_1");

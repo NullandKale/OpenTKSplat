@@ -113,36 +113,16 @@ namespace OpenTKSplat.Data
             }
 
             // Handling spherical harmonics and diffuse color features
-            float[] featuresDc = new float[3];
-            featuresDc[0] = ply.GetProperty<float>(i, "f_dc_0");
-            featuresDc[1] = ply.GetProperty<float>(i, "f_dc_1");
-            featuresDc[2] = ply.GetProperty<float>(i, "f_dc_2");
+            data.SphericalHarmonics[i, 0] = ply.GetProperty<float>(i, "f_dc_0");
+            data.SphericalHarmonics[i, 1] = ply.GetProperty<float>(i, "f_dc_1");
+            data.SphericalHarmonics[i, 2] = ply.GetProperty<float>(i, "f_dc_2");
 
             // Handling extra spherical harmonics features
-            float[] featuresExtra = new float[extraFeatureCount * 3];
             for (int j = 0; j < extraFeatureCount * 3; j++)
             {
                 string property = $"f_rest_{j}";
-                featuresExtra[j] = ply.GetProperty<float>(i, property);
-            }
-
-            // Combine featuresDc and featuresExtra for final Spherical Harmonics
-            for (int j = 0; j < 3; j++)
-            {
-                data.SphericalHarmonics[i, j] = featuresDc[j];
-            }
-
-            for (int j = 0; j < extraFeatureCount; j++)
-            {
-                int shFeatureStartIndex = 3 + j * 3;
-                for (int k = 0; k < 3; k++)
-                {
-                    int indexExtra = j + k * extraFeatureCount;
-                    int indexSH = shFeatureStartIndex + k;
-                    data.SphericalHarmonics[i, indexSH] = featuresExtra[indexExtra];
-                }
+                data.SphericalHarmonics[i, j + 3] = ply.GetProperty<float>(i, property);
             }
         }
     }
-
 }
