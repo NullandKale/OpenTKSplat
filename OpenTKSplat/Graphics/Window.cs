@@ -91,9 +91,9 @@ namespace OpenTKSplat
                 Console.WriteLine("Failed to connect to Looking Glass display, rendering 2D only");
             }
 
-            if (quilt != null && quilt.valid)
+            if (quilt != null && quilt.IsValid)
             {
-                Size = new Vector2i((int)quilt.window_width / (int)quiltScale, (int)quilt.window_height / (int)quiltScale);
+                Size = new Vector2i((int)quilt.LKGDisplayWidth / (int)quiltScale, (int)quilt.LKGDisplayHeight / (int)quiltScale);
             }
 
             FileDrop += OnFileDrop;
@@ -287,7 +287,7 @@ namespace OpenTKSplat
             GL.BindVertexArray(vao);
 
             // draw 3d
-            if (quilt != null && quilt.valid)
+            if (quilt != null && quilt.IsValid)
             {
                 quilt.Draw(render, camera, depthiness, focus);
             }
