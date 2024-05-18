@@ -12,3 +12,4 @@ From a high level this program does the following:
 
 # Rendering
 1. [Rendering Splats. Really Fast.](2_Rendering/2DRendering.md)
+1. [Holograms? Techincally No.](2_Rendering/RenderingAHologram.md)
