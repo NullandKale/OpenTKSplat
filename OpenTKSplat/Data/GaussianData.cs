@@ -4,6 +4,7 @@ namespace OpenTKSplat.Data
 {
     public class GaussianData
     {
+        public string filename;
         public Vector3[] Positions;
         public Vector4[] Rotations;
         public Vector3[] Scales;
@@ -49,6 +50,7 @@ namespace OpenTKSplat.Data
             int shDimension = 3 * extraFeatureCount + 3; // 3 for diffuse color + rest for spherical harmonics
             
             GaussianData data = new GaussianData(vertexCount, shDimension);
+            data.filename = path;
 
             bool rotFieldsExist = ply.HasField("rot_0");
 

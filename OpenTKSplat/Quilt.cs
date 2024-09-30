@@ -36,12 +36,12 @@ namespace OpenTKSplat
 
             // mlc: cache the size of the bridge output so we can decide how large to make
             // the quilt views
-            BridgeInProc.Controller.WindowDimensions(window, ref LKGDisplayWidth, ref LKGDisplayHeight);
+            BridgeInProc.Controller.GetWindowDimensions(window, ref LKGDisplayWidth, ref LKGDisplayHeight);
 
             uint GPUMaxTextureSize = 0;
 
             // mlc: see how large we can make out render texture
-            BridgeInProc.Controller.MaxTextureSize(window, ref GPUMaxTextureSize);
+            BridgeInProc.Controller.GetMaxTextureSize(window, ref GPUMaxTextureSize);
 
             // mlc: now we need to figure out how large our views and quilt will be
             uint desired_view_width = LKGDisplayWidth / viewScalar;
@@ -106,6 +106,8 @@ namespace OpenTKSplat
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
             GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
 
+            IsValid = true;
+
             if (LKGDisplayWidth == 0 || LKGDisplayWidth == 0)
             {
                 Console.WriteLine("Bridge Error??");
@@ -114,7 +116,6 @@ namespace OpenTKSplat
 
             DesiredViewAspect = (TileWidth / (float)TileHeight);
         }
-
 
         private (Matrix4 viewMatrix, Matrix4 projectionMatrix) ComputeViewCameraData(Camera camera, int view, bool invert, float depthiness, float focus)
         {
@@ -157,6 +158,25 @@ namespace OpenTKSplat
             GL.Viewport(viewportX, viewportY, (int)TileWidth, (int)TileHeight);
         }
 
+        public void Save(string filenamePrefix)
+        {
+            string filenamePrefixWithoutExtension = Path.GetFileNameWithoutExtension(filenamePrefix);
+            string filenamePostfix = $"_qs{TileCountX}x{TileCountY}a{DesiredViewAspect}z1.png";
+            string filename = filenamePrefixWithoutExtension + filenamePostfix;
+
+            // Call the method to save the texture to file
+            BridgeInProc.Controller.SaveTextureToFileGL(
+                window,
+                filename,
+                (ulong)QuiltRenderTextureID,
+                BridgeInProc.PixelFormats.BGRA,
+                QuiltWidth,
+                QuiltHeight
+            );
+        }
+
+
+
         public void Draw(Action<Matrix4, Matrix4> render, Camera camera, float depthiness, float focus)
         {
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, QuiltRenderFBO);
@@ -175,5 +195,6 @@ namespace OpenTKSplat
                 QuiltWidth, QuiltHeight,
                 TileCountX, TileCountY, DesiredViewAspect, 1.0f);
         }
+
     }
 }

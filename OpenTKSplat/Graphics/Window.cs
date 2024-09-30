@@ -75,10 +75,10 @@ namespace OpenTKSplat
                 if(render3D)
                 {
                     // Initialize bridge
-                    BridgeInProc.Controller.Initialize();
+                    BridgeInProc.Controller.Initialize("OpenTKSplats");
 
                     // Instance the window on the looking glass display
-                    if (BridgeInProc.Controller.InstanceWindowGL(ref bridge_window, true))
+                    if (BridgeInProc.Controller.InstanceWindowGL(ref bridge_window))
                     {
                         // allocate a framebuffer for the window
                         quilt = new Quilt(bridge_window, quiltScale, 8, 6);
@@ -227,6 +227,14 @@ namespace OpenTKSplat
             {
                 focus -= focusDelta;
             }
+
+            if(IsKeyReleased(Keys.P))
+            {
+                if(quilt != null)
+                {
+                    quilt.Save(rawData.filename);
+                }
+            }    
 
             camera.ProcessInputs(MouseState, KeyboardState);
         }
